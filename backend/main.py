@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Fantasy Football AI Manager API")
+    from app.core.database import init_db
+    await init_db()
     await redis_cache.connect()
     yield
     # Shutdown
