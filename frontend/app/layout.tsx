@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin'] })
+import { Providers } from './providers'
+import { Navigation } from '@/components/navigation'
 
 export const metadata: Metadata = {
   title: 'Fantasy Football AI Manager',
@@ -16,7 +15,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className="font-sans antialiased">
+        <Providers>
+          <Navigation />
+          <main>{children}</main>
+        </Providers>
+      </body>
     </html>
   )
 }
