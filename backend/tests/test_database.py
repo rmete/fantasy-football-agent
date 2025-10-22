@@ -6,6 +6,8 @@ Run from backend directory:
 """
 
 import asyncio
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.core.database import engine, AsyncSessionLocal, init_db, Base
 from app.models import User, League, Roster
 from app.crud.user import create_user, get_user_by_sleeper_id
@@ -105,7 +107,13 @@ async def test_database():
     # Test querying with relationships
     print("\n6. Testing relationships...")
     async with AsyncSessionLocal() as session:
-        user = await get_user_by_sleeper_id(session, "test123")
+        # Eagerly load the leagues relationship
+        result = await session.execute(
+            select(User)
+            .options(selectinload(User.leagues))
+            .where(User.sleeper_user_id == "test123")
+        )
+        user = result.scalar_one_or_none()
         if user and user.leagues:
             print(f"   ✓ User has {len(user.leagues)} league(s)")
             for league in user.leagues:

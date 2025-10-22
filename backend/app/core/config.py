@@ -29,7 +29,10 @@ class Settings(BaseSettings):
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
     # AI/LLM
+    LLM_PROVIDER: str = "anthropic"  # Options: "anthropic", "openai", "gemini"
     ANTHROPIC_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
 
     # Sleeper
     SLEEPER_BASE_URL: str = "https://api.sleeper.app/v1"

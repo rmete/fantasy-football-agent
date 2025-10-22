@@ -1,5 +1,6 @@
 from typing import Dict, Any, List
-from app.agents.config import anthropic_client, SYSTEM_PROMPTS, AGENT_MODELS
+from app.agents.config import SYSTEM_PROMPTS, AGENT_MODELS
+from app.agents.llm_client import llm_client
 from app.tools import sleeper_client, projection_tool
 import logging
 
@@ -66,14 +67,12 @@ Should I accept this trade? Provide:
 """
 
         try:
-            response = anthropic_client.messages.create(
+            analysis_text = llm_client.create_message(
                 model=self.model,
-                max_tokens=1500,
                 system=self.system_prompt,
-                messages=[{"role": "user", "content": context}]
+                messages=[{"role": "user", "content": context}],
+                max_tokens=1500
             )
-
-            analysis_text = response.content[0].text
 
             return {
                 "recommendation": "ACCEPT" if "ACCEPT" in analysis_text.upper() else "REJECT",

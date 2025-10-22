@@ -1,4 +1,4 @@
-import praw
+import asyncpraw
 from typing import List, Dict, Any, Optional
 from app.core.config import settings
 from datetime import datetime, timedelta
@@ -11,23 +11,25 @@ class RedditSentimentTool:
 
     def __init__(self):
         self.reddit = None
-        self._initialize_reddit()
+        self._reddit_config = {
+            "client_id": settings.REDDIT_CLIENT_ID,
+            "client_secret": settings.REDDIT_CLIENT_SECRET,
+            "user_agent": settings.REDDIT_USER_AGENT or "FantasyFootballAI/1.0"
+        }
 
-    def _initialize_reddit(self):
-        """Initialize Reddit API client"""
+    async def _get_reddit_client(self):
+        """Get or create async Reddit client"""
         if not all([settings.REDDIT_CLIENT_ID, settings.REDDIT_CLIENT_SECRET]):
             logger.warning("Reddit API credentials not set")
-            return
+            return None
 
         try:
-            self.reddit = praw.Reddit(
-                client_id=settings.REDDIT_CLIENT_ID,
-                client_secret=settings.REDDIT_CLIENT_SECRET,
-                user_agent=settings.REDDIT_USER_AGENT or "FantasyFootballAI/1.0"
-            )
-            logger.info("Reddit client initialized")
+            reddit = asyncpraw.Reddit(**self._reddit_config)
+            logger.info("Async Reddit client initialized")
+            return reddit
         except Exception as e:
             logger.error(f"Failed to initialize Reddit client: {e}")
+            return None
 
     async def get_player_sentiment(
         self,
@@ -52,11 +54,12 @@ class RedditSentimentTool:
             }
         """
 
-        if not self.reddit:
+        reddit = await self._get_reddit_client()
+        if not reddit:
             return self._empty_sentiment(player_name)
 
         try:
-            subreddit_obj = self.reddit.subreddit(subreddit)
+            subreddit_obj = await reddit.subreddit(subreddit)
 
             # Search for player mentions
             search_query = player_name
@@ -67,24 +70,31 @@ class RedditSentimentTool:
             )
 
             comments_data = []
-            for post in posts:
+            async for post in posts:
                 # Get top comments from each post
-                post.comments.replace_more(limit=0)
-                for comment in post.comments.list()[:10]:
-                    if player_name.lower() in comment.body.lower():
-                        comments_data.append({
-                            "text": comment.body,
-                            "score": comment.score,
-                            "created": datetime.fromtimestamp(comment.created_utc)
-                        })
+                await post.comments.replace_more(limit=0)
+                comments_list = post.comments.list()
+                if comments_list:  # Check if list is not None
+                    for comment in comments_list[:10]:
+                        if hasattr(comment, 'body') and player_name.lower() in comment.body.lower():
+                            comments_data.append({
+                                "text": comment.body,
+                                "score": comment.score,
+                                "created": datetime.fromtimestamp(comment.created_utc)
+                            })
 
             # Analyze sentiment (simple keyword-based for now)
             sentiment = self._analyze_sentiment(comments_data, player_name)
+
+            # Close the Reddit session
+            await reddit.close()
 
             return sentiment
 
         except Exception as e:
             logger.error(f"Reddit sentiment error: {e}")
+            if reddit:
+                await reddit.close()
             return self._empty_sentiment(player_name)
 
     def _analyze_sentiment(self, comments: List[Dict], player_name: str) -> Dict[str, Any]:

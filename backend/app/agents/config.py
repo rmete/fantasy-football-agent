@@ -1,19 +1,26 @@
-from anthropic import Anthropic
 from app.core.config import settings
+from app.agents.llm_client import llm_client
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Initialize Claude client
-anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+# Unified LLM client (supports Anthropic, OpenAI, Gemini)
+# Provider is configured via settings.LLM_PROVIDER environment variable
 
-# Model configurations
+# For backwards compatibility
+anthropic_client = llm_client.client if settings.LLM_PROVIDER == "anthropic" else None
+
+# Model configurations - dynamically determined by LLM provider
+def get_agent_model(agent_type: str) -> str:
+    """Get the appropriate model for the configured LLM provider"""
+    return llm_client.get_model_name(agent_type)
+
 AGENT_MODELS = {
-    "orchestrator": "claude-3-5-sonnet-20241022",
-    "sit_start": "claude-3-5-sonnet-20241022",
-    "trade": "claude-3-5-sonnet-20241022",
-    "waiver": "claude-3-5-sonnet-20241022",
-    "lineup": "claude-3-5-sonnet-20241022",
+    "orchestrator": get_agent_model("orchestrator"),
+    "sit_start": get_agent_model("sit_start"),
+    "trade": get_agent_model("trade"),
+    "waiver": get_agent_model("waiver"),
+    "lineup": get_agent_model("lineup"),
 }
 
 # Agent prompts

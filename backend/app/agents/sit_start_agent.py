@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from app.agents.state import AgentState
-from app.agents.config import anthropic_client, SYSTEM_PROMPTS, AGENT_MODELS
+from app.agents.config import SYSTEM_PROMPTS, AGENT_MODELS
+from app.agents.llm_client import llm_client
 from app.tools import (
     sleeper_client,
     web_search_tool,
@@ -118,16 +119,14 @@ Based on all this data, provide:
 """
 
         try:
-            response = anthropic_client.messages.create(
+            recommendation_text = llm_client.create_message(
                 model=self.model,
-                max_tokens=1000,
                 system=self.system_prompt,
                 messages=[
                     {"role": "user", "content": context}
-                ]
+                ],
+                max_tokens=1000
             )
-
-            recommendation_text = response.content[0].text
 
             # Parse response
             decision = self._parse_recommendation(
