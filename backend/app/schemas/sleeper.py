@@ -4,7 +4,7 @@ from datetime import datetime
 
 class SleeperUser(BaseModel):
     user_id: str
-    username: str
+    username: Optional[str] = None
     display_name: str
     avatar: Optional[str] = None
 
