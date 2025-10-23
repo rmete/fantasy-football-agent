@@ -26,7 +26,7 @@ class SleeperClient:
             logger.error(f"Error fetching user {username}: {e}")
             return None
 
-    async def get_user_leagues(self, user_id: str, sport: str = "nfl", season: str = "2024") -> List[Dict[str, Any]]:
+    async def get_user_leagues(self, user_id: str, sport: str = "nfl", season: str = "2025") -> List[Dict[str, Any]]:
         """Get all leagues for a user in a given season"""
         try:
             response = await self.client.get(

@@ -5,6 +5,8 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { RecommendationCard } from '@/components/recommendation-card';
+import { RosterDisplay } from '@/components/roster-display';
+import { ChatInterface } from '@/components/chat-interface';
 import { Loader2 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { SitStartRecommendation } from '@/types';
@@ -14,6 +16,13 @@ export default function LineupOptimizerPage() {
   const leagueId = params.leagueId as string;
   const [recommendations, setRecommendations] = useState<SitStartRecommendation[]>([]);
 
+  const username = process.env.NEXT_PUBLIC_SLEEPER_USERNAME || 'rmete';
+
+  const { data: user } = useQuery({
+    queryKey: ['user', username],
+    queryFn: () => apiClient.getUser(username),
+  });
+
   const { data: league, isLoading: leagueLoading } = useQuery({
     queryKey: ['league', leagueId],
     queryFn: () => apiClient.getLeague(leagueId),
@@ -22,6 +31,18 @@ export default function LineupOptimizerPage() {
   const { data: rosters } = useQuery({
     queryKey: ['rosters', leagueId],
     queryFn: () => apiClient.getLeagueRosters(leagueId),
+  });
+
+  const { data: players } = useQuery({
+    queryKey: ['players'],
+    queryFn: () => apiClient.getPlayers(),
+    staleTime: 1000 * 60 * 60, // Cache for 1 hour
+  });
+
+  const { data: weekInfo } = useQuery({
+    queryKey: ['current-week'],
+    queryFn: () => apiClient.getCurrentWeek(),
+    staleTime: 1000 * 60 * 60, // Cache for 1 hour
   });
 
   const analyzeMutation = useMutation({
@@ -50,14 +71,26 @@ export default function LineupOptimizerPage() {
     );
   }
 
+
   const leagueData = (league as any)?.league;
+
+  // Find the user's actual roster by matching owner_id
+  const userId = (user as any)?.user_id;
+  const userRoster = ((rosters as any) || []).find(
+    (r: any) => r.owner_id === userId
+  );
+
+  const playersData = players || {};
+  const currentWeek = (weekInfo as any)?.current_week || 1;
 
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-4xl font-bold">Lineup Optimizer</h1>
-          <p className="text-muted-foreground">{leagueData?.name}</p>
+          <p className="text-muted-foreground">
+            {leagueData?.name} • Week {currentWeek}
+          </p>
         </div>
         <Button
           onClick={handleAnalyze}
@@ -69,6 +102,18 @@ export default function LineupOptimizerPage() {
           )}
           Analyze Lineup
         </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div>
+          <RosterDisplay roster={userRoster} players={playersData} />
+        </div>
+        <div>
+          <ChatInterface
+            leagueId={leagueId}
+            rosterId={userRoster?.roster_id || 1}
+          />
+        </div>
       </div>
 
       {analyzeMutation.isPending && (

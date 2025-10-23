@@ -31,8 +31,8 @@ export class APIClient {
     return this.request(`/api/v1/sleeper/user/${username}`);
   }
 
-  async getUserLeagues(username: string) {
-    return this.request(`/api/v1/sleeper/user/${username}/leagues`);
+  async getUserLeagues(username: string, season: string = '2025') {
+    return this.request(`/api/v1/sleeper/user/${username}/leagues?season=${season}`);
   }
 
   async getLeague(leagueId: string) {
@@ -75,6 +75,22 @@ export class APIClient {
 
   async getAgentHealth() {
     return this.request('/api/v1/agents/health');
+  }
+
+  async sendChatMessage(data: {
+    message: string;
+    league_id: string;
+    roster_id: number;
+    week?: number;
+  }) {
+    return this.request(`/api/v1/agents/chat`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getCurrentWeek() {
+    return this.request('/api/v1/agents/week');
   }
 }
 

@@ -27,7 +27,7 @@ async def get_user(username: str):
 async def get_user_leagues(
     username: str,
     sport: str = Query("nfl", description="Sport type"),
-    season: str = Query("2024", description="Season year")
+    season: str = Query("2025", description="Season year")
 ):
     """Get all leagues for a user"""
     # First get user

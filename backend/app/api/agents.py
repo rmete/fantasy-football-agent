@@ -1,9 +1,13 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, AsyncGenerator
 from app.agents.orchestrator import orchestrator
+from app.agents.chat_agent import chat_agent
+from app.utils.nfl_week import get_current_nfl_week, validate_week
 import logging
 import uuid
+import json
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -20,14 +24,21 @@ class TradeAnalysisRequest(BaseModel):
     their_players: List[str]
     user_id: str = "default_user"
 
+class ChatRequest(BaseModel):
+    message: str
+    league_id: str
+    roster_id: int
+    week: Optional[int] = 1
+
 @router.post("/sit-start")
 async def run_sit_start_analysis(request: SitStartRequest):
     """Run sit/start analysis for a roster"""
 
     try:
         task_id = str(uuid.uuid4())
+        current_week = validate_week(request.week)
 
-        logger.info(f"Starting sit/start analysis for league {request.league_id}")
+        logger.info(f"Starting sit/start analysis for league {request.league_id}, week {current_week}")
 
         # Run orchestrator
         initial_state = {
@@ -36,7 +47,7 @@ async def run_sit_start_analysis(request: SitStartRequest):
             "roster_id": request.roster_id,
             "task_type": "sit_start",
             "task_id": task_id,
-            "week": request.week or 1
+            "week": current_week
         }
 
         result = await orchestrator.run(initial_state)
@@ -91,6 +102,74 @@ async def run_trade_analysis(request: TradeAnalysisRequest):
         logger.error(f"Trade analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/chat")
+async def chat_with_agent(request: ChatRequest):
+    """Chat with the AI agent about lineup decisions"""
+
+    try:
+        current_week = validate_week(request.week)
+        logger.info(f"Chat request: {request.message[:50]}... (Week {current_week})")
+
+        response = await chat_agent.chat(
+            user_message=request.message,
+            league_id=request.league_id,
+            roster_id=request.roster_id,
+            week=current_week
+        )
+
+        return {
+            "response": response,
+            "status": "success"
+        }
+
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/stream")
+async def chat_with_agent_stream(request: ChatRequest):
+    """Streaming chat with agent status updates"""
+
+    async def generate_stream() -> AsyncGenerator[str, None]:
+        try:
+            current_week = validate_week(request.week)
+
+            # Send initial status
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing your question...'})}\n\n"
+
+            # Get response from chat agent with streaming
+            async for update in chat_agent.chat_stream(
+                user_message=request.message,
+                league_id=request.league_id,
+                roster_id=request.roster_id,
+                week=current_week
+            ):
+                yield f"data: {json.dumps(update)}\n\n"
+
+            # Send completion
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Streaming chat error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+@router.get("/week")
+async def get_current_week():
+    """Get current NFL week information"""
+    from app.utils.nfl_week import get_nfl_week_info
+
+    return get_nfl_week_info()
+
 @router.get("/health")
 async def agents_health():
     """Check if agents are configured correctly"""
@@ -100,7 +179,8 @@ async def agents_health():
     health = {
         "status": "healthy",
         "anthropic_configured": bool(settings.ANTHROPIC_API_KEY),
-        "sleeper_configured": bool(settings.SLEEPER_USERNAME)
+        "sleeper_configured": bool(settings.SLEEPER_USERNAME),
+        "current_week": get_current_nfl_week()
     }
 
     if not settings.ANTHROPIC_API_KEY:
