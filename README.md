@@ -168,6 +168,8 @@ Analyzes community sentiment from r/fantasyfootball.
 
 ## 🏗️ Architecture
 
+### High-Level System Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Next.js Frontend (Port 3000)              │
@@ -177,38 +179,282 @@ Analyzes community sentiment from r/fantasyfootball.
 │  │  (Dashboard)    │  │  (Streaming SSE) │  │  Display    ││
 │  └─────────────────┘  └──────────────────┘  └─────────────┘│
 └────────────────────────┬──────────────────────────────────────┘
-                         │ REST API + SSE
+                         │ REST API + SSE Streaming
 ┌────────────────────────▼──────────────────────────────────────┐
 │                 FastAPI Backend (Port 8000)                    │
-│  ┌───────────────────────────────────────────────────────┐   │
-│  │              Chat Agent (Streaming)                    │   │
-│  │  ┌──────────────────────────────────────────────┐    │   │
-│  │  │  Tool Detection & Orchestration               │    │   │
-│  │  │  • Web search for "search", "find", "waiver" │    │   │
-│  │  │  • Matchup analysis for "best matchup"       │    │   │
-│  │  │  • Injury check for "injury", "hurt"         │    │   │
-│  │  │  • News search for "news", "latest"          │    │   │
-│  │  └──────────────────────────────────────────────┘    │   │
-│  └───────────────────────────────────────────────────────┘   │
 │                                                                │
-│  ┌─────────────────────────────────────────────────────┐     │
-│  │                   Agent Tools                        │     │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  │     │
-│  │  │ Web Search   │  │ Defense      │  │ Sleeper  │  │     │
-│  │  │ (Tavily+DDG) │  │ Matchup      │  │ Client   │  │     │
-│  │  └──────────────┘  └──────────────┘  └──────────┘  │     │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  │     │
-│  │  │ NFL Schedule │  │ Projections  │  │ Injuries │  │     │
-│  │  └──────────────┘  └──────────────┘  └──────────┘  │     │
-│  └─────────────────────────────────────────────────────┘     │
+│              /api/v1/agents/chat/stream                        │
+│                          │                                     │
+│                          ▼                                     │
+│              ┌───────────────────────────┐                    │
+│              │  LangGraph Chat Agent     │                    │
+│              │  (langgraph_chat_agent)   │                    │
+│              └───────────────────────────┘                    │
+│                          │                                     │
+│          [See detailed diagram below]                          │
+│                                                                │
 └─────────────────────────┬──────────────────────────────────────┘
                           │
          ┌────────────────┼────────────────┐
          ▼                ▼                ▼
     PostgreSQL         Redis        External APIs
   (User Data,      (Caching,      (Sleeper, Tavily,
-   Preferences)     Sessions)      DuckDuckGo)
+   Preferences)     Sessions)      DuckDuckGo, Reddit)
 ```
+
+### LangGraph Agent Orchestration
+
+The chat agent uses **LangGraph** for intelligent, LLM-driven tool selection. The agent autonomously decides which tools to use based on the user's query.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    LangGraph Chat Agent Workflow                  │
+└──────────────────────────────────────────────────────────────────┘
+
+    User Message: "Search for waiver wire RBs. Check injuries."
+           │
+           ▼
+    ┌──────────────────┐
+    │  fetch_context   │  ← Load roster & player data from Sleeper
+    │     (Node 1)     │
+    └────────┬─────────┘
+             │
+             ▼
+    ┌──────────────────┐
+    │   agent (Node 2) │  ← Claude LLM with .bind_tools(ALL_TOOLS)
+    │                  │    Reads tool descriptions and decides:
+    │  Bound Tools:    │    "I need search_web AND check_injury_status"
+    │  • search_web    │
+    │  • get_news      │    Returns: tool_calls = [
+    │  • analyze_def   │      {name: "search_web", args: {...}},
+    │  • get_roster    │      {name: "check_injury_status", args: {...}}
+    │  • check_injury  │    ]
+    │  • get_proj      │
+    │  • (10 tools)    │
+    └────────┬─────────┘
+             │
+             ▼
+    ┌──────────────────┐
+    │ _should_continue │  ← Check: Does last message have tool_calls?
+    │  (Conditional)   │
+    └─────┬───────┬────┘
+          │       │
+    Yes   │       │ No
+          │       └──────────────────────┐
+          ▼                              ▼
+    ┌──────────────────┐           ┌─────────┐
+    │  tools (Node 3)  │           │   END   │ ← Return final response to user
+    │                  │           └─────────┘
+    │  ToolNode:       │
+    │  Automatically   │
+    │  executes tools  │
+    │  requested by    │
+    │  the LLM         │
+    └────────┬─────────┘
+             │
+             │ Tool results appended to messages
+             │
+             └─────────────┐
+                           │
+                           ▼
+                    ┌──────────────────┐
+                    │   agent (Node 2) │  ← LLM sees tool results
+                    │                  │    Decides: synthesize answer or call more tools
+                    │  "I have search  │
+                    │  results & injury│
+                    │  data. Ready to  │
+                    │  respond."       │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │ _should_continue │
+                    └─────────┬────────┘
+                              │
+                         No   │
+                              ▼
+                        ┌─────────┐
+                        │   END   │ ← Stream final response
+                        └─────────┘
+```
+
+### Agent Hierarchy & Tool Organization
+
+The system uses a **LangGraph supervisor pattern** where a single intelligent agent coordinates all tools with conversational memory. The agent autonomously decides which tools to use based on the user's query.
+
+```
+                      ┌─────────────────────────────────┐
+                      │   LangGraph Chat Agent          │
+                      │   (Claude 3.5 Haiku)            │
+                      │                                 │
+                      │   Features:                     │
+                      │   • LLM-driven tool selection   │
+                      │   • Conversational memory       │
+                      │   • Streaming responses         │
+                      │   • Smart swap suggestions      │
+                      └──────────┬──────────────────────┘
+                                 │
+                  ┌──────────────┼──────────────┐
+                  │              │              │
+          ┌───────▼──────┐ ┌────▼─────┐ ┌─────▼──────┐
+          │  Research    │ │ Roster   │ │ Analysis   │
+          │  Tools (4)   │ │ Tools(3) │ │ Tools (4)  │
+          └──────┬───────┘ └────┬─────┘ └─────┬──────┘
+                 │              │              │
+         ┌───────▼───────┐  ┌───▼──────┐  ┌───▼─────────┐
+         │ • search_web  │  │ • get_   │  │ • get_player│
+         │ • get_player_ │  │   roster │  │   _projection│
+         │   news        │  │ • identify│  │ • check_    │
+         │ • analyze_    │  │   _player_│  │   injury_   │
+         │   defense_vs_ │  │   by_name│  │   status    │
+         │   position    │  │ • swap_  │  │ • get_      │
+         │ • get_team_   │  │   players│  │   community_│
+         │   opponent    │  │          │  │   sentiment │
+         │               │  │          │  │ • analyze_  │
+         │               │  │          │  │   player_   │
+         │               │  │          │  │   matchup   │
+         └───────────────┘  └──────────┘  └─────────────┘
+```
+
+### Tool Distribution
+
+The agent has access to **11 tools** organized into 3 categories:
+
+**🔍 Research Tools** (web search, news, matchups)
+- `search_web` - General web search for fantasy info
+- `get_player_news` - Latest player news articles
+- `analyze_defense_vs_position` - Defensive matchup ratings
+- `get_team_opponent` - Find weekly opponent
+
+**📋 Roster Tools** (lineup management)
+- `get_roster` - View current lineup
+- `identify_player_by_name` - Find player IDs
+- `swap_players` - 🆕 Propose lineup changes (start/bench players)
+
+**📊 Analysis Tools** (projections, injuries, sentiment)
+- `get_player_projection` - Fantasy point projections
+- `check_injury_status` - Injury reports
+- `get_community_sentiment` - Reddit sentiment analysis
+- `analyze_player_matchup` - Complete matchup analysis
+
+### Key Agent Features
+
+#### 1. **LLM-Driven Tool Selection**
+No hardcoded keyword matching. Claude reads tool descriptions and autonomously decides which tools to use based on context.
+
+**Example:**
+- User: *"Who should I start at RB?"*
+- Agent thinks: "I need projections, matchups, and injury data" → Calls 3 tools automatically
+
+#### 2. **Conversational Memory**
+The agent remembers previous messages in the conversation, enabling natural follow-up questions.
+
+**Example:**
+- User: *"Tell me about Ricky Pearsall"*
+- Agent: *"Ricky is projected for 11.8 points..."*
+- User: *"What's his injury status?"* ← Agent knows "his" = Ricky
+- Agent: *"Ricky is healthy with no injury concerns"*
+
+#### 3. **Smart Swap Suggestions**
+When you ask to start a player, the agent automatically:
+- Identifies all current starters at that position
+- Gets projections for each player
+- Suggests who to bench (lowest projection)
+- Asks for confirmation before proposing the swap
+
+**Example:**
+- User: *"Start Christian McCaffrey"*
+- Agent: *"You have Derrick Henry (10 pts) and Saquon (12 pts) starting. I recommend benching Henry to start CMC (14 pts). Should I propose this swap?"*
+
+#### 4. **Multi-Tool Execution**
+Agent can call multiple tools in one decision for comprehensive analysis.
+
+**Example:**
+- User: *"Can you start Josh Allen over Dak Prescott?"*
+- Agent calls: `get_player_projection` (2x) + `get_team_opponent` (2x) + `search_web` + `swap_players`
+
+#### 5. **Streaming Status Updates**
+Frontend receives real-time updates showing agent's thinking process:
+- "Fetching your roster data..."
+- "Context loaded"
+- "Using tools: search_web, check_injury_status..."
+- "Agent responded"
+
+#### 6. **Iterative Reasoning**
+Agent can call tools, see results, then decide to call more tools or respond.
+
+**Flow:**
+1. User asks question
+2. Agent calls initial tools
+3. Reviews results
+4. Decides: "I need more data" → Calls additional tools
+5. Synthesizes final answer
+
+#### 7. **Graceful Fallbacks**
+Handles missing data, API errors, and empty rosters intelligently. Always asks clarifying questions when needed.
+
+### Example: Agent in Action
+
+**User Query:** *"Who should I start at RB this week? Check injuries and matchups."*
+
+**LangGraph Workflow:**
+
+1. **fetch_context** node loads roster from Sleeper
+2. **agent** node (Claude LLM) reads the query and tool descriptions:
+   - Recognizes need for multiple tools
+   - Decides: `search_web` + `check_injury_status` + `get_team_opponent` + `get_player_projection`
+3. **tools** node executes all 4 tools in parallel
+4. **agent** node receives results, analyzes, and decides if more tools needed
+5. Claude synthesizes final recommendation with reasoning
+
+**Frontend sees:**
+```
+🔄 Fetching your roster data...
+🔄 Context loaded
+🔄 Agent responded
+🔄 Using tools: search_web...
+🔄 Agent responded
+🔄 Using tools: check_injury_status...
+🔄 Agent responded
+🔄 Using tools: get_team_opponent...
+🔄 Agent responded
+🔄 Using tools: get_player_projection...
+🔄 Agent responded
+✅ Response: Based on the research, here are my top RB recommendations...
+   - Bijan Robinson (healthy, favorable matchup, projected 12.3 pts)
+   - Jonathan Taylor (healthy, ranked #2, projected 12.3 pts)
+   ...
+```
+
+**Key Insight:** The agent autonomously decided which tools to use and how many times to call them—no hardcoded logic!
+
+### Why This Architecture is Powerful
+
+**Traditional Chatbots:**
+```
+User: "Start CMC"
+Bot: Keyword match "start" → Call swap function
+Bot: "Error: Need to specify who to bench"
+```
+
+**This LangGraph Agent:**
+```
+User: "Start CMC"
+Agent: Analyzes roster → Sees current RB starters
+Agent: Calls get_player_projection for CMC + all starting RBs
+Agent: Compares: CMC (14 pts), Henry (10 pts), Saquon (12 pts)
+Agent: "I recommend benching Henry (lowest). Should I swap?"
+User: "Yes"
+Agent: Calls swap_players with reasoning
+```
+
+**Benefits:**
+- ✅ No hardcoded rules
+- ✅ Adapts to any question structure
+- ✅ Asks clarifying questions when needed
+- ✅ Maintains conversation context
+- ✅ Provides data-driven recommendations
+- ✅ Learns from tool descriptions, not keywords
 
 ## 📁 Project Structure
 
@@ -230,27 +476,31 @@ fantasy-football-agent/
 ├── backend/                       # FastAPI application
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── agents.py         # Agent endpoints (chat, sit/start)
+│   │   │   ├── agents.py         # Agent endpoints (chat/stream)
 │   │   │   └── sleeper.py        # Sleeper API proxy
 │   │   ├── agents/
-│   │   │   ├── chat_agent.py     # Main conversational agent
+│   │   │   ├── langgraph_chat_agent.py  # 🆕 LangGraph agent with StateGraph
+│   │   │   ├── tools_schema.py          # 🆕 LangChain tool wrappers
+│   │   │   ├── state.py                 # 🆕 ChatAgentState for LangGraph
+│   │   │   ├── chat_agent.py            # Legacy chat agent (deprecated)
 │   │   │   ├── sit_start_agent.py
-│   │   │   ├── llm_client.py     # Multi-LLM support
-│   │   │   └── config.py
+│   │   │   ├── orchestrator.py
+│   │   │   └── llm_client.py            # Multi-LLM support
 │   │   ├── tools/
-│   │   │   ├── web_search.py     # Tavily + DuckDuckGo
-│   │   │   ├── defense_matchup.py # Defense vs position analysis
-│   │   │   ├── nfl_schedule.py   # Opponent lookup
-│   │   │   ├── sleeper_client.py # Sleeper API wrapper
-│   │   │   ├── projections.py    # Player projections
-│   │   │   ├── injuries.py       # Injury monitoring
-│   │   │   └── reddit_scraper.py # Sentiment analysis
+│   │   │   ├── web_search.py            # Tavily + DuckDuckGo
+│   │   │   ├── defense_matchup.py       # Defense vs position analysis
+│   │   │   ├── nfl_schedule.py          # Opponent lookup
+│   │   │   ├── sleeper_client.py        # Sleeper API wrapper
+│   │   │   ├── projection_tool.py       # Player projections
+│   │   │   ├── injury_tool.py           # Injury monitoring
+│   │   │   └── reddit_tool.py           # Sentiment analysis
 │   │   ├── utils/
-│   │   │   └── nfl_week.py       # Dynamic week calculation
+│   │   │   └── nfl_week.py              # Dynamic week calculation
 │   │   └── core/
-│   │       └── config.py         # Environment config
+│   │       └── config.py                # Environment config
 │   └── tests/
-│       └── test_web_search.py    # Real API tests (no mocks)
+│       ├── test_web_search.py           # Web search API tests
+│       └── test_langgraph_agent.py      # 🆕 LangGraph agent tests
 │
 ├── docker-compose.yml
 ├── .env.example

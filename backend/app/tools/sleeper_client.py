@@ -114,5 +114,31 @@ class SleeperClient:
             logger.error(f"Error fetching trending players: {e}")
             return []
 
+    async def update_roster_starters(
+        self,
+        league_id: str,
+        roster_id: int,
+        new_starters: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Update roster starters for a given week
+
+        Note: Sleeper API doesn't support direct roster updates via public API.
+        This would require OAuth authentication and user authorization.
+
+        For now, this returns a simulated response for agent planning.
+        In production, this would need:
+        1. User OAuth authentication
+        2. POST to Sleeper's authenticated endpoints
+        3. User approval workflow
+        """
+        logger.warning("Roster updates require OAuth - returning simulated response")
+        return {
+            "success": False,
+            "message": "Roster updates require user authentication via Sleeper OAuth",
+            "required_action": "User must approve lineup changes in Sleeper app",
+            "proposed_starters": new_starters
+        }
+
 # Singleton instance
 sleeper_client = SleeperClient()

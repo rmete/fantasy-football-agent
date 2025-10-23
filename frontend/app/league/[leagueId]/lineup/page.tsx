@@ -112,6 +112,7 @@ export default function LineupOptimizerPage() {
           <ChatInterface
             leagueId={leagueId}
             rosterId={userRoster?.roster_id || 1}
+            week={currentWeek}
           />
         </div>
       </div>

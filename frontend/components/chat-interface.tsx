@@ -17,9 +17,10 @@ interface Message {
 interface ChatInterfaceProps {
   leagueId: string;
   rosterId: number;
+  week?: number;
 }
 
-export function ChatInterface({ leagueId, rosterId }: ChatInterfaceProps) {
+export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -54,14 +55,24 @@ export function ChatInterface({ leagueId, rosterId }: ChatInterfaceProps) {
       timestamp: new Date(),
     };
 
+    // Build conversation history BEFORE adding current message
+    // Skip initial greeting (index 0)
+    const conversationHistory = messages
+      .slice(1) // Skip initial greeting
+      .map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
     setAgentStatus('Connecting to agent...');
 
     try {
-      // Use streaming endpoint
+      // Use streaming endpoint with conversation history
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
       const response = await fetch(`${API_URL}/api/v1/agents/chat/stream`, {
         method: 'POST',
         headers: {
@@ -71,7 +82,8 @@ export function ChatInterface({ leagueId, rosterId }: ChatInterfaceProps) {
           message: userMessage.content,
           league_id: leagueId,
           roster_id: rosterId,
-          week: null, // Use current week
+          week: week || null, // Use week from page or current week
+          conversation_history: conversationHistory,
         }),
       });
 

@@ -1,8 +1,48 @@
-from typing import TypedDict, List, Dict, Any, Optional, Annotated
+"""
+LangGraph State Schema for Fantasy Football Agents
+"""
+from typing import TypedDict, List, Dict, Any, Optional, Annotated, Literal
 from datetime import datetime
+from langgraph.graph.message import add_messages
+from langchain_core.messages import BaseMessage
+
+
+class ChatAgentState(TypedDict):
+    """State for the conversational chat agent with tool calling"""
+
+    # Conversation messages (LangChain format)
+    messages: Annotated[List[BaseMessage], add_messages]
+
+    # User context
+    user_id: str
+    league_id: str
+    roster_id: int
+    week: int
+
+    # Agent coordination
+    next_agent: Optional[str]  # Which specialist to route to
+    current_agent: str  # Current agent name
+
+    # Cached data
+    roster_data: Optional[Dict[str, Any]]
+    players_data: Optional[Dict[str, Any]]
+
+    # Tool outputs (accumulated across agents)
+    tool_outputs: Dict[str, Any]
+
+    # Status updates for streaming UI
+    status_message: Optional[str]
+
+    # Final response
+    final_response: Optional[str]
+
+    # Human-in-the-loop for roster changes
+    needs_approval: bool
+    pending_action: Optional[Dict[str, Any]]
+
 
 class AgentState(TypedDict):
-    """Shared state across all agents"""
+    """Legacy state - keeping for backward compatibility with orchestrator"""
 
     # User context
     user_id: str

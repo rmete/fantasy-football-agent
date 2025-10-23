@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, List, AsyncGenerator
 from app.agents.orchestrator import orchestrator
 from app.agents.chat_agent import chat_agent
+from app.agents.langgraph_chat_agent import langgraph_chat_agent
 from app.utils.nfl_week import get_current_nfl_week, validate_week
 import logging
 import uuid
@@ -24,11 +25,16 @@ class TradeAnalysisRequest(BaseModel):
     their_players: List[str]
     user_id: str = "default_user"
 
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
 class ChatRequest(BaseModel):
     message: str
     league_id: str
     roster_id: int
     week: Optional[int] = 1
+    conversation_history: Optional[List[ChatMessage]] = []  # Previous messages for context
 
 @router.post("/sit-start")
 async def run_sit_start_analysis(request: SitStartRequest):
@@ -129,21 +135,19 @@ async def chat_with_agent(request: ChatRequest):
 
 @router.post("/chat/stream")
 async def chat_with_agent_stream(request: ChatRequest):
-    """Streaming chat with agent status updates"""
+    """Streaming chat with LangGraph agent and tool calling"""
 
     async def generate_stream() -> AsyncGenerator[str, None]:
         try:
             current_week = validate_week(request.week)
 
-            # Send initial status
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing your question...'})}\n\n"
-
-            # Get response from chat agent with streaming
-            async for update in chat_agent.chat_stream(
+            # Get response from LangGraph chat agent with streaming
+            async for update in langgraph_chat_agent.chat_stream(
                 user_message=request.message,
                 league_id=request.league_id,
                 roster_id=request.roster_id,
-                week=current_week
+                week=current_week,
+                conversation_history=request.conversation_history or []
             ):
                 yield f"data: {json.dumps(update)}\n\n"
 
@@ -151,7 +155,7 @@ async def chat_with_agent_stream(request: ChatRequest):
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
         except Exception as e:
-            logger.error(f"Streaming chat error: {e}")
+            logger.error(f"Streaming chat error: {e}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(
