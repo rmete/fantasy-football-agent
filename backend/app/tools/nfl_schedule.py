@@ -1,20 +1,19 @@
 """
 NFL Schedule Tool
-Fetches NFL schedules to determine team matchups
+Fetches NFL schedules from ESPN API (via Schedule Service)
 """
 from typing import Dict, Any, Optional
-import httpx
 import logging
+from app.tools.data.schedule_service import schedule_service
 
 logger = logging.getLogger(__name__)
 
 
 class NFLScheduleTool:
-    """Tool for fetching NFL schedules and matchups"""
+    """Tool for fetching NFL schedules and matchups using real data"""
 
     def __init__(self):
-        # Sleeper API endpoint for NFL state (includes week info)
-        self.sleeper_base = "https://api.sleeper.app/v1"
+        self.schedule_service = schedule_service
 
     async def get_team_opponent(
         self,
@@ -27,77 +26,50 @@ class NFLScheduleTool:
 
         Args:
             team_abbr: Team abbreviation (e.g., "KC", "SF", "BAL")
+            week: NFL week number (1-18)
+            season: NFL season year
+
+        Returns:
+            Opponent team abbreviation or None if on bye or not found
+        """
+        logger.info(f"Fetching opponent for {team_abbr} in week {week}")
+
+        try:
+            opponent = await self.schedule_service.get_team_opponent(team_abbr, week, season)
+
+            if opponent:
+                logger.info(f"{team_abbr} plays {opponent} in week {week}")
+            else:
+                logger.info(f"{team_abbr} is on bye in week {week}")
+
+            return opponent
+
+        except Exception as e:
+            logger.error(f"Error fetching opponent for {team_abbr}: {e}")
+            return None
+
+    async def is_home_game(
+        self,
+        team_abbr: str,
+        week: int,
+        season: int = 2025
+    ) -> bool:
+        """
+        Check if a team is playing at home in a given week
+
+        Args:
+            team_abbr: Team abbreviation
             week: NFL week number
             season: NFL season year
 
         Returns:
-            Opponent team abbreviation or None if not found
+            True if home game, False if away or bye
         """
-        logger.info(f"Fetching opponent for {team_abbr} in week {week}")
-
-        # For now, we'll use web search to find the matchup
-        # In production, you'd use an NFL API or maintain a schedule database
-        from app.tools.web_search import web_search_tool
-
         try:
-            query = f"{team_abbr} NFL week {week} {season} opponent schedule"
-            results = await web_search_tool.general_search(query, max_results=2)
-
-            # Try to extract opponent from results
-            opponent = self._extract_opponent_from_results(results, team_abbr)
-
-            if opponent:
-                logger.info(f"{team_abbr} plays {opponent} in week {week}")
-                return opponent
-            else:
-                logger.warning(f"Could not determine opponent for {team_abbr} in week {week}")
-                return None
-
+            return await self.schedule_service.is_home_game(team_abbr, week, season)
         except Exception as e:
-            logger.error(f"Error fetching opponent: {e}")
-            return None
-
-    def _extract_opponent_from_results(
-        self,
-        results: list,
-        team: str
-    ) -> Optional[str]:
-        """
-        Extract opponent team from search results
-
-        This is a simple implementation - in production you'd want more robust parsing
-        """
-        # Common team abbreviations
-        nfl_teams = [
-            "KC", "SF", "BAL", "BUF", "CIN", "CLE", "DAL", "DEN", "DET", "GB",
-            "HOU", "IND", "JAX", "LAC", "LAR", "LV", "MIA", "MIN", "NE", "NO",
-            "NYG", "NYJ", "PHI", "PIT", "SEA", "TB", "TEN", "WAS", "ARI", "ATL",
-            "CAR", "CHI"
-        ]
-
-        for result in results:
-            content = (result.get("title", "") + " " + result.get("content", "")).upper()
-
-            # Look for "vs" or "@" patterns
-            for opp in nfl_teams:
-                if opp == team.upper():
-                    continue
-
-                # Check for common matchup patterns
-                patterns = [
-                    f"{team.upper()} VS {opp}",
-                    f"{team.upper()} @ {opp}",
-                    f"{opp} VS {team.upper()}",
-                    f"{opp} @ {team.upper()}",
-                    f"{team.upper()}-{opp}",
-                    f"{opp}-{team.upper()}"
-                ]
-
-                for pattern in patterns:
-                    if pattern in content:
-                        return opp
-
-        return None
+            logger.error(f"Error checking home game for {team_abbr}: {e}")
+            return False
 
     async def get_team_schedule(
         self,
@@ -114,10 +86,31 @@ class NFLScheduleTool:
         Returns:
             Dictionary mapping week numbers to opponent abbreviations
         """
-        # This would ideally call an NFL schedule API
-        # For now, return empty dict - we'll fetch matchups on-demand
-        logger.info(f"Schedule lookup for {team_abbr} - using on-demand fetching")
-        return {}
+        logger.info(f"Fetching full schedule for {team_abbr}")
+
+        try:
+            schedule = await self.schedule_service.get_team_schedule(team_abbr, season)
+            return schedule
+
+        except Exception as e:
+            logger.error(f"Error fetching schedule for {team_abbr}: {e}")
+            return {}
+
+    async def get_current_week(self, season: int = 2025) -> int:
+        """
+        Get the current NFL week
+
+        Args:
+            season: NFL season year
+
+        Returns:
+            Current week number (1-18)
+        """
+        try:
+            return await self.schedule_service.get_current_week(season)
+        except Exception as e:
+            logger.error(f"Error fetching current week: {e}")
+            return 1
 
     def get_team_full_name(self, team_abbr: str) -> str:
         """Convert team abbreviation to full name"""
