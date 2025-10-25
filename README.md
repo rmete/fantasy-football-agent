@@ -2,9 +2,12 @@
 
 An intelligent, agentic AI application for managing your fantasy football team on Sleeper. Built with LangGraph multi-agent orchestration, this application features real-time web search, defensive matchup analysis, streaming chat with agent thinking visualization, and autonomous lineup management.
 
-## 🎯 Core Features
+<img width="1455" height="875" alt="image" src="https://github.com/user-attachments/assets/d2985931-b975-42bd-9cab-a3d3438111e9" />
 
-### 💬 **Intelligent Chat Assistant**
+
+## Core Features
+
+### **Intelligent Chat Assistant**
 - **Streaming responses** with real-time agent status updates
 - **Typewriter effect** showing agent thinking process:
   - "Fetching your roster data..."
@@ -18,7 +21,7 @@ An intelligent, agentic AI application for managing your fantasy football team o
   - "Who should I start this week?"
   - "How is the Giants defense against the pass this year?"
 
-### 🔍 **Web Search Integration**
+### **Web Search Integration**
 - **Dual search strategy**: Tavily API (primary) + DuckDuckGo (fallback)
 - **Automatic activation** when you ask questions like:
   - "Search for..." / "Find..." / "Look up..."
@@ -27,7 +30,7 @@ An intelligent, agentic AI application for managing your fantasy football team o
 - **Real results** from FantasyPros, Yahoo Sports, ESPN, etc.
 - **Year-specific queries** (always includes "2025" for accuracy)
 
-### 🏈 **Defense vs Position Matchup Analysis**
+### **Defense vs Position Matchup Analysis**
 - **Intelligent matchup ratings** for your players
 - **Position-specific analysis**:
   - RBs → "How are the [Team] against the run?"
@@ -39,17 +42,17 @@ An intelligent, agentic AI application for managing your fantasy football team o
   - "Best matchup to exploit?"
 - **Web-powered ratings**: Searches for current defensive rankings
 
-### 📊 **Sit/Start Analysis**
+### **Sit/Start Analysis**
 - Analyzes player stats, projections, and matchups
 - Provides confidence levels and reasoning
 - Considers injuries, recent performance, and opponent strength
 
-### 📈 **Dynamic NFL Week Detection**
+### **Dynamic NFL Week Detection**
 - Automatically calculates current NFL week based on season start date
 - No manual updates needed - always uses the correct week
 - Shows week information in UI and uses it for all analyses
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Frontend
 - **Next.js 14** (App Router) with TypeScript
@@ -320,18 +323,18 @@ The system uses a **LangGraph supervisor pattern** where a single intelligent ag
 
 The agent has access to **11 tools** organized into 3 categories:
 
-**🔍 Research Tools** (web search, news, matchups)
+**Research Tools** (web search, news, matchups)
 - `search_web` - General web search for fantasy info
 - `get_player_news` - Latest player news articles
 - `analyze_defense_vs_position` - Defensive matchup ratings
 - `get_team_opponent` - Find weekly opponent
 
-**📋 Roster Tools** (lineup management)
+**Roster Tools** (lineup management)
 - `get_roster` - View current lineup
 - `identify_player_by_name` - Find player IDs
 - `swap_players` - 🆕 Propose lineup changes (start/bench players)
 
-**📊 Analysis Tools** (projections, injuries, sentiment)
+**Analysis Tools** (projections, injuries, sentiment)
 - `get_player_projection` - Fantasy point projections
 - `check_injury_status` - Injury reports
 - `get_community_sentiment` - Reddit sentiment analysis
@@ -448,15 +451,7 @@ User: "Yes"
 Agent: Calls swap_players with reasoning
 ```
 
-**Benefits:**
-- ✅ No hardcoded rules
-- ✅ Adapts to any question structure
-- ✅ Asks clarifying questions when needed
-- ✅ Maintains conversation context
-- ✅ Provides data-driven recommendations
-- ✅ Learns from tool descriptions, not keywords
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 fantasy-football-agent/
@@ -507,7 +502,7 @@ fantasy-football-agent/
 └── README.md
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
@@ -753,7 +748,7 @@ LLM_PROVIDER=anthropic  # Primary
 - Historical performance tracking
 - League commissioner tools
 
-## 🤝 Contributing
+## Contributing
 
 Contributions welcome! Areas needing work:
 - Additional data sources (ESPN, Yahoo)
@@ -761,11 +756,11 @@ Contributions welcome! Areas needing work:
 - Advanced ML models
 - Testing and documentation
 
-## 📄 License
+## License
 
 MIT
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Built with **Claude AI** (Anthropic)
 - **LangGraph** for agent orchestration
@@ -775,6 +770,6 @@ MIT
 
 ---
 
-**Built with ❤️ for fantasy football managers who want an AI edge**
+**Built for fantasy football managers who want an AI edge**
 
 For issues or questions, check the API docs at http://localhost:8000/docs
