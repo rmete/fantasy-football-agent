@@ -82,6 +82,8 @@ export class APIClient {
     league_id: string;
     roster_id: number;
     week?: number;
+    model?: string;
+    temperature?: number;
   }) {
     return this.request(`/api/v1/agents/chat`, {
       method: 'POST',
@@ -91,6 +93,44 @@ export class APIClient {
 
   async getCurrentWeek() {
     return this.request('/api/v1/agents/week');
+  }
+
+  // Projection endpoints
+  async getPlayerProjection(
+    playerId: string,
+    options?: {
+      week?: number;
+      scoring_format?: 'PPR' | 'HALF_PPR' | 'STD';
+      season?: number;
+    }
+  ) {
+    const params = new URLSearchParams();
+    if (options?.week) params.append('week', options.week.toString());
+    if (options?.scoring_format) params.append('scoring_format', options.scoring_format);
+    if (options?.season) params.append('season', options.season.toString());
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/api/v1/sleeper/projections/${playerId}${query}`);
+  }
+
+  async getBatchProjections(
+    playerIds: string[],
+    options?: {
+      week?: number;
+      scoring_format?: 'PPR' | 'HALF_PPR' | 'STD';
+      season?: number;
+    }
+  ) {
+    const params = new URLSearchParams();
+    if (options?.week) params.append('week', options.week.toString());
+    if (options?.scoring_format) params.append('scoring_format', options.scoring_format);
+    if (options?.season) params.append('season', options.season.toString());
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/api/v1/sleeper/projections/batch${query}`, {
+      method: 'POST',
+      body: JSON.stringify(playerIds),
+    });
   }
 }
 

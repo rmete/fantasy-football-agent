@@ -9,8 +9,11 @@ from app.schemas.sleeper import (
     SleeperMatchup
 )
 from app.tools.sleeper_client import sleeper_client
+from app.tools.projections import projection_tool
 from app.core.config import settings
+from app.utils.bye_weeks import is_team_on_bye
 import logging
+import httpx
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sleeper", tags=["sleeper"])
@@ -107,3 +110,146 @@ async def get_trending_players(
 
     trending = await sleeper_client.get_trending_players(sport, add_drop)
     return trending
+
+@router.get("/projections/{player_id}")
+async def get_player_projection(
+    player_id: str,
+    week: Optional[int] = Query(None, description="Week number (default: current week)"),
+    scoring_format: str = Query("PPR", description="Scoring format: PPR, HALF_PPR, or STD"),
+    season: Optional[int] = Query(None, description="Season year (default: current season)")
+):
+    """Get projection for a specific player"""
+    try:
+        # Get player info first to get name and position
+        players = await sleeper_client.get_players()
+        player = players.get(player_id)
+
+        if not player:
+            raise HTTPException(status_code=404, detail=f"Player {player_id} not found")
+
+        player_name = player.get("full_name") or f"{player.get('first_name')} {player.get('last_name')}"
+        position = player.get("position")
+
+        if not position:
+            raise HTTPException(status_code=400, detail=f"Player {player_name} has no position")
+
+        # Get projection
+        projection = await projection_tool.get_player_projection(
+            player_name=player_name,
+            position=position,
+            week=week,
+            scoring_format=scoring_format,
+            season=season
+        )
+
+        # Add player_id to response
+        projection["player_id"] = player_id
+
+        return projection
+    except Exception as e:
+        logger.error(f"Error fetching projection for player {player_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/projections/batch")
+async def get_batch_projections(
+    player_ids: List[str],
+    week: Optional[int] = Query(None, description="Week number (default: current week)"),
+    scoring_format: str = Query("PPR", description="Scoring format: PPR, HALF_PPR, or STD"),
+    season: Optional[int] = Query(None, description="Season year (default: current season)")
+):
+    """Get projections for multiple players at once"""
+    try:
+        # Get NFL state for current week
+        async with httpx.AsyncClient() as client:
+            state_resp = await client.get("https://api.sleeper.app/v1/state/nfl")
+            nfl_state = state_resp.json()
+        current_week = week if week is not None else int(nfl_state.get("week", 1))
+
+        players = await sleeper_client.get_players()
+        projections = []
+
+        for player_id in player_ids:
+            player = players.get(player_id)
+            if not player:
+                logger.warning(f"Player {player_id} not found in catalog")
+                # Still add a placeholder so frontend knows this player exists
+                projections.append({
+                    "player_id": player_id,
+                    "player": player_id,
+                    "position": "Unknown",
+                    "team": None,
+                    "projected_points": None,
+                    "floor": None,
+                    "ceiling": None,
+                    "confidence": "none",
+                    "is_on_bye": False,
+                    "injury_status": None,
+                    "injury_body_part": None,
+                    "note": "Player not found in catalog"
+                })
+                continue
+
+            player_name = player.get("full_name") or f"{player.get('first_name')} {player.get('last_name')}"
+            position = player.get("position")
+            team = player.get("team")
+            injury_status = player.get("injury_status")
+            injury_body_part = player.get("injury_body_part")
+
+            # Check if player is on bye
+            is_on_bye = is_team_on_bye(team, current_week) if team else False
+
+            if not position:
+                logger.warning(f"Player {player_name} ({player_id}) has no position")
+                projections.append({
+                    "player_id": player_id,
+                    "player": player_name,
+                    "position": "Unknown",
+                    "team": team,
+                    "projected_points": None,
+                    "floor": None,
+                    "ceiling": None,
+                    "confidence": "none",
+                    "is_on_bye": is_on_bye,
+                    "injury_status": injury_status,
+                    "injury_body_part": injury_body_part,
+                    "note": "No position data"
+                })
+                continue
+
+            try:
+                projection = await projection_tool.get_player_projection(
+                    player_name=player_name,
+                    position=position,
+                    week=week,
+                    scoring_format=scoring_format,
+                    season=season
+                )
+                # Add player_id and status info
+                projection["player_id"] = player_id
+                projection["is_on_bye"] = is_on_bye
+                projection["injury_status"] = injury_status
+                projection["injury_body_part"] = injury_body_part
+                projections.append(projection)
+            except Exception as e:
+                logger.error(f"Error fetching projection for {player_name} ({player_id}): {e}")
+                # Add the player with null projection so UI can show it
+                projections.append({
+                    "player_id": player_id,
+                    "player": player_name,
+                    "position": position,
+                    "team": team,
+                    "projected_points": None,
+                    "floor": None,
+                    "ceiling": None,
+                    "confidence": "none",
+                    "is_on_bye": is_on_bye,
+                    "injury_status": injury_status,
+                    "injury_body_part": injury_body_part,
+                    "note": f"Error: {str(e)[:50]}"
+                })
+                continue
+
+        return {"projections": projections}
+    except Exception as e:
+        logger.error(f"Error in batch projections: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
