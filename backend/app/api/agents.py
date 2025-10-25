@@ -35,6 +35,9 @@ class ChatRequest(BaseModel):
     roster_id: int
     week: Optional[int] = 1
     conversation_history: Optional[List[ChatMessage]] = []  # Previous messages for context
+    # Model preferences
+    model: Optional[str] = None  # Override default model
+    temperature: Optional[float] = None  # Override default temperature
 
 @router.post("/sit-start")
 async def run_sit_start_analysis(request: SitStartRequest):

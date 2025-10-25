@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Send, Bot, User } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { TypewriterStatus } from '@/components/typewriter-status';
+import { useAppSelector } from '@/store/hooks';
 
 interface Message {
   id: string;
@@ -21,6 +22,10 @@ interface ChatInterfaceProps {
 }
 
 export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) {
+  // Get AI settings from Redux
+  const selectedModel = useAppSelector((state) => state.settings.selectedModel);
+  const temperature = useAppSelector((state) => state.settings.temperature);
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -84,6 +89,8 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
           roster_id: rosterId,
           week: week || null, // Use week from page or current week
           conversation_history: conversationHistory,
+          model: selectedModel, // Use model from Redux settings
+          temperature: temperature, // Use temperature from Redux settings
         }),
       });
 
