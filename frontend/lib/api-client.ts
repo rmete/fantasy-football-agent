@@ -132,6 +132,33 @@ export class APIClient {
       body: JSON.stringify(playerIds),
     });
   }
+
+  // Conversation endpoints
+  async getConversations(userId: string = 'default', limit: number = 50, offset: number = 0) {
+    const params = new URLSearchParams({
+      user_id: userId,
+      limit: limit.toString(),
+      offset: offset.toString(),
+    });
+    return this.request(`/api/v1/conversations?${params.toString()}`);
+  }
+
+  async getConversation(conversationId: string) {
+    return this.request(`/api/v1/conversations/${conversationId}`);
+  }
+
+  async deleteConversation(conversationId: string) {
+    return this.request(`/api/v1/conversations/${conversationId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async updateConversationTitle(conversationId: string, title: string) {
+    return this.request(`/api/v1/conversations/${conversationId}/title`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    });
+  }
 }
 
 export const apiClient = new APIClient();
