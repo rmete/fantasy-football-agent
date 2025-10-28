@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.redis_client import redis_cache
 from app.tools.sleeper_client import sleeper_client
-from app.api import sleeper, agents
+from app.api import sleeper, agents, conversations
 import logging
 
 # Configure logging
@@ -19,13 +19,23 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Fantasy Football AI Manager API")
     from app.core.database import init_db
+    from app.agents.langgraph_chat_agent import langgraph_chat_agent
+
     await init_db()
     await redis_cache.connect()
+
+    # Initialize LangGraph agent with PostgreSQL checkpointing
+    logger.info("Initializing LangGraph agent...")
+    await langgraph_chat_agent.initialize()
+
     yield
     # Shutdown
     logger.info("Shutting down API")
     await sleeper_client.close()
     await redis_cache.close()
+
+    # Close checkpointer connection pool
+    await langgraph_chat_agent.cleanup()
 
 app = FastAPI(
     title="Fantasy Football AI Manager API",
@@ -46,6 +56,7 @@ app.add_middleware(
 # Include routers
 app.include_router(sleeper.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
+app.include_router(conversations.router, prefix="/api/v1")
 
 @app.get("/")
 async def root():

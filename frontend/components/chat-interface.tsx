@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Send, Bot, User } from 'lucide-react';
+import { Loader2, Send, Bot, User, Maximize2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { TypewriterStatus } from '@/components/typewriter-status';
-import { useAppSelector } from '@/store/hooks';
+import { ChatFullscreenModal } from '@/components/chat-fullscreen-modal';
+import { useAppSelector, useAppDispatch } from '@/store/hooks';
+import { setChatContext, fetchConversations } from '@/store/slices/conversationSlice';
 
 interface Message {
   id: string;
@@ -22,9 +24,16 @@ interface ChatInterfaceProps {
 }
 
 export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) {
+  const dispatch = useAppDispatch();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   // Get AI settings from Redux
   const selectedModel = useAppSelector((state) => state.settings.selectedModel);
   const temperature = useAppSelector((state) => state.settings.temperature);
+
+  // Get conversation state from Redux
+  const currentThreadId = useAppSelector((state) => state.conversation.currentThreadId);
+  const currentConversation = useAppSelector((state) => state.conversation.currentConversation);
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -40,6 +49,43 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
   const [agentStatus, setAgentStatus] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Store chat context when props change
+  useEffect(() => {
+    dispatch(
+      setChatContext({
+        league_id: leagueId,
+        roster_id: rosterId,
+        week: week || 0,
+      })
+    );
+  }, [dispatch, leagueId, rosterId, week]);
+
+  // Load conversation messages when conversation is selected
+  useEffect(() => {
+    if (currentConversation?.messages) {
+      // Convert conversation messages to UI message format
+      const loadedMessages: Message[] = currentConversation.messages.map((msg) => ({
+        id: msg.id,
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+        timestamp: new Date(msg.created_at),
+      }));
+
+      setMessages(loadedMessages);
+    } else {
+      // Reset to initial greeting when no conversation is loaded
+      setMessages([
+        {
+          id: '1',
+          role: 'assistant',
+          content:
+            "Hi! I'm your fantasy football AI assistant. I can search the web, analyze matchups, and help you make lineup decisions. What would you like to know?",
+          timestamp: new Date(),
+        },
+      ]);
+    }
+  }, [currentConversation]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -60,22 +106,13 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
       timestamp: new Date(),
     };
 
-    // Build conversation history BEFORE adding current message
-    // Skip initial greeting (index 0)
-    const conversationHistory = messages
-      .slice(1) // Skip initial greeting
-      .map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }));
-
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
     setAgentStatus('Connecting to agent...');
 
     try {
-      // Use streaming endpoint with conversation history
+      // Use streaming endpoint with thread_id for conversation persistence
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
       const response = await fetch(`${API_URL}/api/v1/agents/chat/stream`, {
@@ -87,10 +124,10 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
           message: userMessage.content,
           league_id: leagueId,
           roster_id: rosterId,
-          week: week || null, // Use week from page or current week
-          conversation_history: conversationHistory,
-          model: selectedModel, // Use model from Redux settings
-          temperature: temperature, // Use temperature from Redux settings
+          week: week || null,
+          thread_id: currentThreadId, // Send thread_id for conversation tracking
+          model: selectedModel,
+          temperature: temperature,
         }),
       });
 
@@ -106,6 +143,7 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
       }
 
       let assistantResponse = '';
+      let isNewConversation = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -126,6 +164,11 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
                 // Final response
                 assistantResponse = data.message;
                 setAgentStatus(null);
+              } else if (data.type === 'metadata') {
+                // Handle conversation metadata
+                if (data.is_new_conversation) {
+                  isNewConversation = true;
+                }
               } else if (data.type === 'error') {
                 throw new Error(data.message);
               } else if (data.type === 'done') {
@@ -148,6 +191,11 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, assistantMessage]);
+      }
+
+      // Refresh conversation list if this was a new conversation
+      if (isNewConversation) {
+        dispatch(fetchConversations());
       }
     } catch (error) {
       console.error('Chat error:', error);
@@ -180,13 +228,26 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
   ];
 
   return (
-    <Card className="flex flex-col h-[600px]">
-      <CardHeader className="border-b">
-        <CardTitle className="flex items-center gap-2">
-          <Bot className="h-5 w-5" />
-          Lineup Assistant
-        </CardTitle>
-      </CardHeader>
+    <React.Fragment>
+      <Card className="flex flex-col h-[600px] shadow-sm">
+        <CardHeader className="border-b bg-gradient-to-r from-primary/5 to-primary/10 py-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <Bot className="h-4 w-4 text-primary" />
+              </div>
+              Lineup Assistant
+            </CardTitle>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setIsFullscreen(true)}
+              className="h-7 px-2"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </CardHeader>
 
       <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message) => (
@@ -247,14 +308,16 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
 
       {/* Suggested questions */}
       {messages.length === 1 && !isLoading && (
-        <div className="px-4 pb-2">
-          <p className="text-xs text-muted-foreground mb-2">Try asking:</p>
-          <div className="flex flex-wrap gap-2">
+        <div className="px-4 pb-3 border-t bg-muted/30">
+          <p className="text-[10px] font-medium text-muted-foreground mb-2 mt-3">
+            QUICK ACTIONS
+          </p>
+          <div className="grid grid-cols-2 gap-2">
             {suggestedQuestions.map((question, index) => (
               <button
                 key={index}
                 onClick={() => setInput(question)}
-                className="text-xs px-3 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
+                className="text-xs px-3 py-2 rounded-lg bg-background border hover:border-primary/50 hover:bg-primary/5 transition-all text-left font-medium shadow-sm"
               >
                 {question}
               </button>
@@ -264,7 +327,7 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
       )}
 
       {/* Input area */}
-      <div className="border-t p-4">
+      <div className="border-t p-4 bg-background">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Textarea
             ref={textareaRef}
@@ -272,18 +335,32 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about your lineup, search for players, analyze matchups..."
-            className="min-h-[60px] resize-none"
+            className="min-h-[60px] resize-none focus-visible:ring-1"
             disabled={isLoading}
           />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim()}>
+          <Button
+            type="submit"
+            size="icon"
+            disabled={isLoading || !input.trim()}
+            className="h-[60px] w-[60px]"
+          >
             {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <Send className="h-4 w-4" />
+              <Send className="h-5 w-5" />
             )}
           </Button>
         </form>
       </div>
     </Card>
+
+    <ChatFullscreenModal
+      isOpen={isFullscreen}
+      onClose={() => setIsFullscreen(false)}
+      leagueId={leagueId}
+      rosterId={rosterId}
+      week={week}
+    />
+    </React.Fragment>
   );
 }

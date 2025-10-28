@@ -2,15 +2,17 @@
 LangGraph-based Fantasy Football Chat Agent
 Uses proper agent architecture with tool calling and state management
 """
-from typing import AsyncGenerator, Dict, Any, List
+from typing import AsyncGenerator, Dict, Any, List, Optional
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from app.agents.state import ChatAgentState
 from app.agents.llm_client import llm_client
 from app.agents.tools_schema import ALL_TOOLS
 from app.tools import sleeper_client
 from app.utils.nfl_week import get_current_nfl_week
+from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -19,10 +21,64 @@ logger = logging.getLogger(__name__)
 class LangGraphChatAgent:
     """
     Fantasy Football Chat Agent using LangGraph for intelligent tool selection
+    with PostgreSQL checkpointing for conversation persistence
     """
 
     def __init__(self):
-        self.graph = self._build_graph()
+        self.checkpointer: Optional[AsyncPostgresSaver] = None
+        self.graph = None
+        self._initialized = False
+        self._checkpointer_cm = None  # Store context manager
+
+    async def initialize(self):
+        """Initialize async components - must be called before using the agent"""
+        if self._initialized:
+            return
+
+        logger.info("Initializing LangGraph chat agent with PostgreSQL checkpointing...")
+
+        try:
+            # Initialize PostgreSQL checkpointer with connection pool
+            # Note: AsyncPostgresSaver uses psycopg which wants plain postgresql:// without dialect
+            from psycopg_pool import AsyncConnectionPool
+
+            db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+            logger.info(f"Creating checkpointer connection pool to: {db_url.split('@')[0]}@...")
+
+            # Create connection pool for checkpointer
+            self._conn_pool = AsyncConnectionPool(
+                conninfo=db_url,
+                min_size=1,
+                max_size=10,
+                open=False
+            )
+            await self._conn_pool.open()
+
+            # Create checkpointer with the pool
+            self.checkpointer = AsyncPostgresSaver(self._conn_pool)
+
+            # Setup checkpoint tables
+            await self.checkpointer.setup()
+
+            logger.info("PostgreSQL checkpointer initialized successfully with connection pool")
+
+            # Build graph with checkpointer
+            self.graph = self._build_graph()
+            self._initialized = True
+            logger.info("LangGraph agent initialized successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize LangGraph agent: {e}", exc_info=True)
+            raise
+
+    async def cleanup(self):
+        """Cleanup checkpointer connection pool"""
+        if hasattr(self, '_conn_pool') and self._conn_pool:
+            try:
+                await self._conn_pool.close()
+                logger.info("Checkpointer connection pool closed")
+            except Exception as e:
+                logger.error(f"Error closing checkpointer pool: {e}")
 
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph agent workflow"""
@@ -54,7 +110,8 @@ class LangGraphChatAgent:
         # After tools, go back to agent
         workflow.add_edge("tools", "agent")
 
-        return workflow.compile()
+        # Compile with checkpointer for conversation persistence
+        return workflow.compile(checkpointer=self.checkpointer)
 
     async def _fetch_context_node(self, state: ChatAgentState) -> Dict[str, Any]:
         """Fetch roster and player data before agent processing"""
@@ -236,60 +293,89 @@ Answer the user's question using the tools available. Be helpful, specific, and 
     async def chat_stream(
         self,
         user_message: str,
+        thread_id: str,
         league_id: str,
         roster_id: int,
         week: int,
         conversation_history: List[Dict[str, str]] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Stream chat responses with agent status updates
+        Stream chat responses with agent status updates and conversation persistence
+
+        Args:
+            user_message: The user's message
+            thread_id: Unique conversation thread identifier for checkpointing
+            league_id: Sleeper league ID
+            roster_id: User's roster ID
+            week: Current NFL week
+            conversation_history: Deprecated - checkpointer handles history
 
         Yields status updates and final response
         """
 
-        logger.info(f"LangGraph chat: {user_message}")
+        if not self._initialized:
+            logger.error("Agent not initialized! Call initialize() first.")
+            yield {"type": "error", "message": "Agent not initialized"}
+            return
 
-        # Build message history from conversation
-        messages = []
-        if conversation_history:
-            for msg in conversation_history:
-                # Handle both dict and Pydantic model
-                role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None)
-                content = msg.get("content", "") if isinstance(msg, dict) else getattr(msg, "content", "")
+        logger.info(f"LangGraph chat (thread: {thread_id}): {user_message}")
 
-                if role == "user":
-                    messages.append(HumanMessage(content=content))
-                elif role == "assistant":
-                    messages.append(AIMessage(content=content))
-
-        # Add current message
-        messages.append(HumanMessage(content=user_message))
-
-        # Initialize state
-        initial_state: ChatAgentState = {
-            "messages": messages,
-            "user_id": "default",  # TODO: Get from auth
-            "league_id": league_id,
-            "roster_id": roster_id,
-            "week": week,
-            "next_agent": None,
-            "current_agent": "chat",
-            "roster_data": None,
-            "players_data": None,
-            "tool_outputs": {},
-            "status_message": None,
-            "final_response": None,
-            "needs_approval": False,
-            "pending_action": None
+        # Configuration for checkpointing
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "checkpoint_ns": ""  # Optional namespace for organizing checkpoints
+            }
         }
+
+        # Check if conversation exists in checkpointer
+        try:
+            state_snapshot = await self.graph.aget_state(config)
+            has_existing_state = bool(state_snapshot.values)
+        except Exception as e:
+            logger.warning(f"Could not retrieve checkpoint state: {e}")
+            has_existing_state = False
+
+        # Initialize or update state
+        if has_existing_state:
+            logger.info(f"Resuming conversation with thread_id: {thread_id}")
+            # Append new message to existing state
+            current_state = state_snapshot.values
+            current_state["messages"].append(HumanMessage(content=user_message))
+
+            # Update context (league/roster might have changed)
+            current_state["league_id"] = league_id
+            current_state["roster_id"] = roster_id
+            current_state["week"] = week
+
+            initial_state = current_state
+        else:
+            logger.info(f"Starting new conversation with thread_id: {thread_id}")
+            # Create fresh state
+            initial_state: ChatAgentState = {
+                "messages": [HumanMessage(content=user_message)],
+                "user_id": "default",  # TODO: Get from auth
+                "league_id": league_id,
+                "roster_id": roster_id,
+                "week": week,
+                "next_agent": None,
+                "current_agent": "chat",
+                "roster_data": None,
+                "players_data": None,
+                "tool_outputs": {},
+                "status_message": None,
+                "final_response": None,
+                "needs_approval": False,
+                "pending_action": None
+            }
 
         try:
             # Stream status updates
             yield {"type": "status", "message": "Fetching your roster data..."}
 
-            # Run the graph
+            # Run the graph with checkpointing enabled
             final_state = None
-            async for event in self.graph.astream(initial_state):
+            async for event in self.graph.astream(initial_state, config=config):
                 # Extract status from event
                 if isinstance(event, dict):
                     for node_name, node_state in event.items():
@@ -323,5 +409,5 @@ Answer the user's question using the tools available. Be helpful, specific, and 
             yield {"type": "error", "message": f"Error: {str(e)}"}
 
 
-# Singleton instance
+# Singleton instance - must call initialize() before use
 langgraph_chat_agent = LangGraphChatAgent()

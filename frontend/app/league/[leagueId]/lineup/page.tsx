@@ -97,11 +97,11 @@ export default function LineupOptimizerPage() {
   const weekOptions = Array.from({ length: 18 }, (_, i) => i + 1);
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="container mx-auto p-6 max-w-[1600px]">
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-4xl font-bold">Lineup Optimizer</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl font-bold tracking-tight">Lineup Optimizer</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             {leagueData?.name} • Week {displayWeek}
           </p>
         </div>
@@ -109,6 +109,7 @@ export default function LineupOptimizerPage() {
           onClick={handleAnalyze}
           disabled={analyzeMutation.isPending}
           size="lg"
+          className="shadow-sm"
         >
           {analyzeMutation.isPending && (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -118,13 +119,15 @@ export default function LineupOptimizerPage() {
       </div>
 
       {/* Projection Controls */}
-      <div className="flex items-center gap-4 mb-8 p-4 bg-muted/50 rounded-lg">
+      <div className="flex items-center gap-4 mb-6 p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-lg border shadow-sm">
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Week:</label>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Week:
+          </label>
           <Select
             value={String(displayWeek)}
             onChange={(e) => dispatch(setSelectedWeek(Number(e.target.value)))}
-            className="w-24"
+            className="w-24 h-8 text-sm"
           >
             {weekOptions.map((week) => (
               <option key={week} value={week}>
@@ -135,13 +138,16 @@ export default function LineupOptimizerPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Scoring:</label>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Scoring:
+          </label>
           <div className="flex gap-1">
             {(['PPR', 'HALF_PPR', 'STD'] as ScoringFormat[]).map((format) => (
               <Button
                 key={format}
                 variant={scoringFormat === format ? 'default' : 'outline'}
                 size="sm"
+                className="h-8 text-xs"
                 onClick={() => dispatch(setScoringFormat(format))}
               >
                 {format === 'HALF_PPR' ? '0.5 PPR' : format}
@@ -151,16 +157,19 @@ export default function LineupOptimizerPage() {
         </div>
 
         <div className="ml-auto">
-          <Badge variant="secondary" className="text-xs">
+          <Badge variant="secondary" className="text-[10px] font-medium">
             Projections: Week {displayWeek} • {scoringFormat === 'HALF_PPR' ? '0.5 PPR' : scoringFormat}
           </Badge>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* Roster Display */}
         <div>
           <RosterDisplay roster={userRoster} players={playersData} />
         </div>
+
+        {/* Chat Interface */}
         <div>
           <ChatInterface
             leagueId={leagueId}
