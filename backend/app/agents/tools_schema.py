@@ -13,6 +13,7 @@ from app.tools import (
 )
 from app.tools.defense_matchup import defense_matchup_analyzer
 from app.tools.nfl_schedule import nfl_schedule_tool
+from app.tools.browser.browser_tools import BROWSER_TOOLS
 
 
 # ============================================================================
@@ -339,4 +340,4 @@ ANALYSIS_TOOLS = [
 ]
 
 # All tools combined (for supervisor if needed)
-ALL_TOOLS = RESEARCH_TOOLS + ROSTER_TOOLS + ANALYSIS_TOOLS
+ALL_TOOLS = RESEARCH_TOOLS + ROSTER_TOOLS + ANALYSIS_TOOLS + BROWSER_TOOLS

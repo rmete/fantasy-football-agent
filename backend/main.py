@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from pathlib import Path
 from app.core.config import settings
 from app.core.redis_client import redis_cache
 from app.tools.sleeper_client import sleeper_client
-from app.api import sleeper, agents, conversations
+from app.api import sleeper, agents, conversations, browser
 import logging
 
 # Configure logging
@@ -37,6 +39,10 @@ async def lifespan(app: FastAPI):
     # Close checkpointer connection pool
     await langgraph_chat_agent.cleanup()
 
+    # Stop browser automation
+    from app.tools.browser.playwright_manager import playwright_manager
+    await playwright_manager.stop()
+
 app = FastAPI(
     title="Fantasy Football AI Manager API",
     description="AI-powered fantasy football team management",
@@ -57,6 +63,12 @@ app.add_middleware(
 app.include_router(sleeper.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(conversations.router, prefix="/api/v1")
+app.include_router(browser.router, prefix="/api/v1")
+
+# Mount static files for screenshots
+uploads_path = Path("uploads")
+uploads_path.mkdir(exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
 
 @app.get("/")
 async def root():

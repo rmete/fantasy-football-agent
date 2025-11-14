@@ -19,13 +19,26 @@ import {
   type OpenAIModel,
   type GeminiModel,
 } from '@/store/slices/settingsSlice';
-import { Settings, User, Brain, Zap, Bell, RotateCcw } from 'lucide-react';
-import { useState } from 'react';
+import { Settings, User, Brain, Zap, Bell, RotateCcw, Lock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { useAppDispatch as useAgentDispatch, useAppSelector as useAgentSelector } from '@/store/hooks';
+import { saveCredentials, getCredentials, deleteCredentials } from '@/store/slices/agentSlice';
 
 export default function SettingsPage() {
   const dispatch = useAppDispatch();
   const settings = useAppSelector((state) => state.settings);
   const [saved, setSaved] = useState(false);
+
+  // Credentials state
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [useSso, setUseSso] = useState(false);
+  const [credentialsSaved, setCredentialsSaved] = useState(false);
+  const [hasCredentials, setHasCredentials] = useState(false);
+  const [isSavingCredentials, setIsSavingCredentials] = useState(false);
+  const [isTestingCredentials, setIsTestingCredentials] = useState(false);
+  const [credentialsError, setCredentialsError] = useState<string | null>(null);
+  const [credentialsSuccess, setCredentialsSuccess] = useState<string | null>(null);
 
   const handleSave = () => {
     // Settings are already saved to localStorage via Redux
@@ -38,6 +51,106 @@ export default function SettingsPage() {
       dispatch(resetSettings());
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    }
+  };
+
+  // Check for existing credentials on mount
+  React.useEffect(() => {
+    const checkCredentials = async () => {
+      try {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_URL}/api/v1/browser/credentials/default`);
+        const data = await response.json();
+        if (data.success && data.email) {
+          setHasCredentials(true);
+          setEmail(data.email || '');
+          setUseSso(data.use_sso || false);
+        }
+      } catch (error) {
+        console.error('Failed to check credentials:', error);
+      }
+    };
+    checkCredentials();
+  }, []);
+
+  const handleSaveCredentials = async () => {
+    setIsSavingCredentials(true);
+    setCredentialsError(null);
+    setCredentialsSuccess(null);
+
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/api/v1/browser/credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: 'default',
+          email,
+          password,
+          use_sso: useSso,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setCredentialsSuccess('Credentials saved successfully!');
+        setHasCredentials(true);
+        setPassword(''); // Clear password field
+        setTimeout(() => setCredentialsSuccess(null), 3000);
+      } else {
+        setCredentialsError(data.error || 'Failed to save credentials');
+      }
+    } catch (error) {
+      setCredentialsError('Failed to save credentials');
+    } finally {
+      setIsSavingCredentials(false);
+    }
+  };
+
+  const handleTestCredentials = async () => {
+    setIsTestingCredentials(true);
+    setCredentialsError(null);
+    setCredentialsSuccess(null);
+
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/api/v1/browser/credentials/test/default`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setCredentialsSuccess('Credentials are valid!');
+        setTimeout(() => setCredentialsSuccess(null), 3000);
+      } else {
+        setCredentialsError(data.message || 'Credentials test failed');
+      }
+    } catch (error) {
+      setCredentialsError('Failed to test credentials');
+    } finally {
+      setIsTestingCredentials(false);
+    }
+  };
+
+  const handleDeleteCredentials = async () => {
+    if (!confirm('Are you sure you want to delete your Sleeper credentials?')) {
+      return;
+    }
+
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      await fetch(`${API_URL}/api/v1/browser/credentials/default`, {
+        method: 'DELETE',
+      });
+
+      setHasCredentials(false);
+      setEmail('');
+      setPassword('');
+      setUseSso(false);
+      setCredentialsSuccess('Credentials deleted successfully');
+      setTimeout(() => setCredentialsSuccess(null), 3000);
+    } catch (error) {
+      setCredentialsError('Failed to delete credentials');
     }
   };
 
@@ -143,6 +256,124 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground mt-1">
                 Your Sleeper username is used to fetch your leagues and teams
               </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sleeper Credentials (Browser Automation) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5" />
+              Sleeper Login Credentials
+            </CardTitle>
+            <CardDescription>
+              Save your Sleeper login credentials for browser automation (stored securely in OS keychain)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Status Indicators */}
+            {hasCredentials && !credentialsSuccess && !credentialsError && (
+              <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30 px-3 py-2 rounded-md">
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Credentials are saved and ready for browser automation</span>
+              </div>
+            )}
+
+            {credentialsSuccess && (
+              <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30 px-3 py-2 rounded-md">
+                <CheckCircle2 className="h-4 w-4" />
+                <span>{credentialsSuccess}</span>
+              </div>
+            )}
+
+            {credentialsError && (
+              <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-md">
+                <XCircle className="h-4 w-4" />
+                <span>{credentialsError}</span>
+              </div>
+            )}
+
+            {/* Email Input */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-3 py-2 border border-input rounded-md bg-background"
+                placeholder="your.email@example.com"
+                disabled={isSavingCredentials}
+              />
+            </div>
+
+            {/* Password Input */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-input rounded-md bg-background"
+                placeholder={hasCredentials ? '••••••••' : 'Enter your password'}
+                disabled={isSavingCredentials}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Password is encrypted and stored in your system keychain
+              </p>
+            </div>
+
+            {/* SSO Checkbox */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="use-sso"
+                checked={useSso}
+                onChange={(e) => setUseSso(e.target.checked)}
+                className="w-4 h-4 rounded border-input"
+                disabled={isSavingCredentials}
+              />
+              <label htmlFor="use-sso" className="text-sm font-medium cursor-pointer">
+                Use Google SSO Login
+              </label>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3 pt-2">
+              <Button
+                onClick={handleSaveCredentials}
+                disabled={!email || !password || isSavingCredentials}
+                className="gap-2"
+              >
+                {isSavingCredentials && <Loader2 className="h-4 w-4 animate-spin" />}
+                {hasCredentials ? 'Update Credentials' : 'Save Credentials'}
+              </Button>
+
+              {hasCredentials && (
+                <>
+                  <Button
+                    onClick={handleTestCredentials}
+                    variant="outline"
+                    disabled={isTestingCredentials}
+                    className="gap-2"
+                  >
+                    {isTestingCredentials && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Test Connection
+                  </Button>
+
+                  <Button
+                    onClick={handleDeleteCredentials}
+                    variant="destructive"
+                    size="sm"
+                  >
+                    Delete
+                  </Button>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
