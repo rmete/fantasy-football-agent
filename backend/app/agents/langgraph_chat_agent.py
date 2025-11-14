@@ -164,8 +164,11 @@ class LangGraphChatAgent:
         from langchain_anthropic import ChatAnthropic
         from app.core.config import settings
 
+        # Use the configured model from llm_client
+        model_name = llm_client.get_model_name("chat")
+
         model = ChatAnthropic(
-            model="claude-3-5-haiku-20241022",
+            model=model_name,
             api_key=settings.ANTHROPIC_API_KEY,
             temperature=0.7
         ).bind_tools(ALL_TOOLS)

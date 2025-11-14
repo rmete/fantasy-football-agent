@@ -6,16 +6,18 @@ Updated for 2025 season
 from typing import Optional, Set
 
 # 2025 NFL Bye Week Schedule
-# Source: NFL official schedule
+# Source: ESPN (https://www.espn.com/nfl/story/_/id/45944807/nfl-bye-weeks-every-team-2025)
+# Updated: November 2025
 BYE_WEEKS_2025 = {
-    5: {"DET", "LAR", "PHI", "TEN"},
-    6: {"KC", "LAC", "MIA", "MIN"},
-    7: {"CHI", "DAL"},
-    9: {"CLE", "GB", "LV", "PIT", "SF", "SEA"},
-    10: {"ARI", "CAR", "NYG", "TB"},
-    11: {"ATL", "BUF", "CIN", "JAX", "NO", "NYJ"},
-    12: {"BAL", "DEN", "HOU", "IND", "NE", "WAS"},
-    14: {},  # No byes in week 14
+    5: {"ATL", "CHI", "GB", "PIT"},
+    6: {"HOU", "MIN"},
+    7: {"BAL", "BUF"},
+    8: {"ARI", "DET", "JAX", "LV", "LAR", "SEA"},
+    9: {"CLE", "NYJ", "PHI", "TB"},
+    10: {"CIN", "DAL", "KC", "TEN"},
+    11: {"IND", "NO"},
+    12: {"DEN", "LAC", "MIA", "WAS"},
+    14: {"CAR", "NE", "NYG", "SF"},
 }
 
 # Weeks with no byes

@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
 
+    # Anthropic Model Selection
+    # Options: "claude-sonnet-4-5-20250929", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-5-20250929"
+
     # Sleeper
     SLEEPER_BASE_URL: str = "https://api.sleeper.app/v1"
     SLEEPER_USERNAME: Optional[str] = None

@@ -7,6 +7,7 @@ import { Loader2, Send, Bot, User, Maximize2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { TypewriterStatus } from '@/components/typewriter-status';
 import { ChatFullscreenModal } from '@/components/chat-fullscreen-modal';
+import { MarkdownRenderer } from '@/components/markdown-renderer';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { setChatContext, fetchConversations } from '@/store/slices/conversationSlice';
 
@@ -270,7 +271,11 @@ export function ChatInterface({ leagueId, rosterId, week }: ChatInterfaceProps) 
                   : 'bg-muted'
               }`}
             >
-              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              {message.role === 'assistant' ? (
+                <MarkdownRenderer content={message.content} className="text-sm" />
+              ) : (
+                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              )}
               <p className="text-xs opacity-70 mt-1">
                 {message.timestamp.toLocaleTimeString([], {
                   hour: '2-digit',

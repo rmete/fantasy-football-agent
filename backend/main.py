@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.redis_client import redis_cache
 from app.tools.sleeper_client import sleeper_client
-from app.api import sleeper, agents, conversations
+from app.api import sleeper, agents, conversations, settings
 import logging
 
 # Configure logging
@@ -57,6 +57,7 @@ app.add_middleware(
 app.include_router(sleeper.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(conversations.router, prefix="/api/v1")
+app.include_router(settings.router, prefix="/api/v1")
 
 @app.get("/")
 async def root():

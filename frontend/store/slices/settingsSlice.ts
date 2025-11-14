@@ -3,9 +3,9 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 export type LLMProvider = 'anthropic' | 'openai' | 'gemini';
 
 export type ClaudeModel =
+  | 'claude-sonnet-4-5-20250929'
   | 'claude-3-5-sonnet-20241022'
-  | 'claude-3-5-haiku-20241022'
-  | 'claude-3-opus-20240229';
+  | 'claude-3-5-haiku-20241022';
 
 export type OpenAIModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo';
 
@@ -32,7 +32,7 @@ const initialState: SettingsState = {
   sleeperUsername: process.env.NEXT_PUBLIC_SLEEPER_USERNAME || 'rmete',
   defaultScoringFormat: 'PPR',
   llmProvider: 'anthropic',
-  selectedModel: 'claude-3-5-haiku-20241022',
+  selectedModel: 'claude-sonnet-4-5-20250929',
   temperature: 0.7,
   theme: 'system',
   enableNotifications: true,
@@ -74,11 +74,11 @@ const settingsSlice = createSlice({
       state.llmProvider = action.payload;
       // Auto-select appropriate default model for provider
       if (action.payload === 'anthropic') {
-        state.selectedModel = 'claude-3-5-haiku-20241022';
+        state.selectedModel = 'claude-sonnet-4-5-20250929';
       } else if (action.payload === 'openai') {
-        state.selectedModel = 'gpt-4o-mini';
+        state.selectedModel = 'gpt-4o';
       } else if (action.payload === 'gemini') {
-        state.selectedModel = 'gemini-1.5-flash';
+        state.selectedModel = 'gemini-1.5-pro';
       }
       saveToLocalStorage(state);
     },

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ConversationSidebar } from '@/components/conversation-sidebar';
 import { TypewriterStatus } from '@/components/typewriter-status';
+import { MarkdownRenderer } from '@/components/markdown-renderer';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { setChatContext, fetchConversations } from '@/store/slices/conversationSlice';
 import { Loader2, Send, Bot, User, X, PanelLeftClose, PanelLeft } from 'lucide-react';
@@ -306,7 +307,11 @@ export function ChatFullscreenModal({
                         : 'bg-muted'
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    {message.role === 'assistant' ? (
+                      <MarkdownRenderer content={message.content} className="text-sm" />
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    )}
                     <p className="text-xs opacity-70 mt-1">
                       {message.timestamp.toLocaleTimeString([], {
                         hour: '2-digit',

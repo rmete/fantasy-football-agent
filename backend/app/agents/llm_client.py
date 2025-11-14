@@ -132,30 +132,54 @@ class LLMClient:
         )
         return response.text
 
+    def _get_anthropic_model_id(self) -> str:
+        """Get the configured Anthropic model ID"""
+        valid_models = [
+            "claude-sonnet-4-5-20250929",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+        ]
+
+        model_choice = settings.ANTHROPIC_MODEL
+        if model_choice not in valid_models:
+            logger.warning(
+                f"Unknown ANTHROPIC_MODEL '{model_choice}'. "
+                f"Valid options: {valid_models}. Defaulting to 'claude-sonnet-4-5-20250929'"
+            )
+            model_choice = "claude-sonnet-4-5-20250929"
+
+        return model_choice
+
     def get_model_name(self, agent_type: str) -> str:
         """Get the appropriate model name for each provider"""
+        # Get the configured Anthropic model
+        anthropic_model = self._get_anthropic_model_id()
+
         # Model mappings for different providers
         model_mappings = {
             "anthropic": {
-                "orchestrator": "claude-3-5-haiku-20241022",
-                "sit_start": "claude-3-5-haiku-20241022",
-                "trade": "claude-3-5-haiku-20241022",
-                "waiver": "claude-3-5-haiku-20241022",
-                "lineup": "claude-3-5-haiku-20241022",
+                "orchestrator": anthropic_model,
+                "sit_start": anthropic_model,
+                "trade": anthropic_model,
+                "waiver": anthropic_model,
+                "lineup": anthropic_model,
+                "chat": anthropic_model,
             },
             "openai": {
-                "orchestrator": "gpt-4o-mini",
-                "sit_start": "gpt-4o-mini",
-                "trade": "gpt-4o-mini",
-                "waiver": "gpt-4o-mini",
-                "lineup": "gpt-4o-mini",
+                "orchestrator": "gpt-4o",
+                "sit_start": "gpt-4o",
+                "trade": "gpt-4o",
+                "waiver": "gpt-4o",
+                "lineup": "gpt-4o",
+                "chat": "gpt-4o",
             },
             "gemini": {
-                "orchestrator": "gemini-1.5-flash",
-                "sit_start": "gemini-1.5-flash",
-                "trade": "gemini-1.5-flash",
-                "waiver": "gemini-1.5-flash",
-                "lineup": "gemini-1.5-flash",
+                "orchestrator": "gemini-1.5-pro",
+                "sit_start": "gemini-1.5-pro",
+                "trade": "gemini-1.5-pro",
+                "waiver": "gemini-1.5-pro",
+                "lineup": "gemini-1.5-pro",
+                "chat": "gemini-1.5-pro",
             },
         }
 

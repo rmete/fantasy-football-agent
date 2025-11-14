@@ -26,11 +26,33 @@ export default function SettingsPage() {
   const dispatch = useAppDispatch();
   const settings = useAppSelector((state) => state.settings);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
-    // Settings are already saved to localStorage via Redux
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // Send settings to backend API
+      const response = await fetch('http://localhost:8000/api/v1/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          anthropic_model: settings.selectedModel,
+          llm_provider: settings.llmProvider,
+          sleeper_username: settings.sleeperUsername,
+        }),
+      });
+
+      if (response.ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      } else {
+        console.error('Failed to save settings');
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReset = () => {
@@ -43,19 +65,19 @@ export default function SettingsPage() {
 
   const claudeModels: { value: ClaudeModel; label: string; description: string }[] = [
     {
+      value: 'claude-sonnet-4-5-20250929',
+      label: 'Claude Sonnet 4.5',
+      description: '🔥 Latest & most intelligent (Sep 2025)',
+    },
+    {
       value: 'claude-3-5-sonnet-20241022',
       label: 'Claude 3.5 Sonnet',
-      description: 'Most intelligent, best for complex analysis',
+      description: 'Powerful & balanced (Oct 2024)',
     },
     {
       value: 'claude-3-5-haiku-20241022',
       label: 'Claude 3.5 Haiku',
-      description: 'Fast and efficient, great for most tasks',
-    },
-    {
-      value: 'claude-3-opus-20240229',
-      label: 'Claude 3 Opus',
-      description: 'Legacy powerful model',
+      description: 'Fast & efficient (Oct 2024)',
     },
   ];
 
@@ -305,8 +327,8 @@ export default function SettingsPage() {
             <RotateCcw className="h-4 w-4" />
             Reset to Defaults
           </Button>
-          <Button onClick={handleSave} size="lg">
-            Save Settings
+          <Button onClick={handleSave} size="lg" disabled={saving}>
+            {saving ? 'Saving...' : 'Save Settings to Backend'}
           </Button>
         </div>
       </div>
